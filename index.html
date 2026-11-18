@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FamilyStore | ملابس الأطفال</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#"><span class="brand-mark">F</span><span>Family<span class="brand-light">Store</span><small>ملابس أطفال جملة وقطاعي</small></span></a>
+  <nav><a href="#shop">تسوقي الآن</a><a href="#categories">الأقسام</a><a href="#about">عن فاملي ستور</a></nav>
+  <div class="header-actions"><button class="ghost" id="adminOpen">الإدارة</button><button class="cart-btn" id="cartOpen">السلة <b id="cartCount">0</b></button></div>
+</header>
+<section class="hero">
+ <div class="hero-copy"><span class="eyebrow">NEW SEASON · FAMILYSTORE</span><h1>ستايل يفرّحهم<br><em>وسعر يفرّحك</em></h1>
+ <p>اختاري أجمل إطلالات أطفالك من تشكيلة فاملي ستور. تسوق سهل، مقاسات واضحة، وتوصيل لحد باب البيت.</p>
+ <a class="primary-btn" href="#shop">اكتشفي المنتجات <span>←</span></a></div>
+ <div class="hero-art"><div class="sun"></div><div class="hero-card card-one">KIDS<br><b>COLLECTION</b></div><div class="hero-card card-two">BABY<br><b>LOVE</b></div><div class="hero-sticker">Made<br>for little<br>moments ♥</div></div>
+</section>
+<section class="benefits">
+ <div>🚚 <span><b>شحن للمحافظات</b><small>احسبي الشحن قبل تأكيد الطلب</small></span></div>
+ <div>💳 <span><b>الدفع عند الاستلام</b><small>ادفعي لما طلبك يوصلك</small></span></div>
+ <div>📏 <span><b>مقاسات واضحة</b><small>اختاري المقاس والكمية بسهولة</small></span></div>
+ <div>💬 <span><b>طلب عبر واتساب</b><small>تأكيد مباشر وسريع</small></span></div>
+</section>
+<section id="categories" class="section">
+ <div class="section-heading"><div><span class="eyebrow">SHOP BY CATEGORY</span><h2>تسوقي حسب القسم</h2></div><p>كل مرحلة عمرية لها حكاية وستايل مختلف.</p></div>
+ <div class="category-grid">
+  <button data-cat="Baby" class="category-tile baby"><span>01 / BABY</span><strong>بيبي</strong><small>من 6 شهور إلى سنتين</small></button>
+  <button data-cat="Kids" class="category-tile kids"><span>02 / KIDS</span><strong>أطفال</strong><small>من 3 إلى 8 سنوات</small></button>
+  <button data-cat="Junior" class="category-tile junior"><span>03 / JUNIOR</span><strong>جونيور</strong><small>من 9 إلى 16 سنة</small></button>
+ </div>
+</section>
+<section id="shop" class="section shop-section">
+ <div class="section-heading"><div><span class="eyebrow">THE COLLECTION</span><h2>اختياراتنا ليكي</h2></div><div class="filters"><label class="mode-label">نوع السعر <select id="globalPriceMode"><option value="retail">قطاعي</option><option value="wholesale">جملة</option></select></label><button class="filter active" data-filter="الكل">الكل</button><button class="filter" data-filter="بناتي">بناتي</button><button class="filter" data-filter="ولادي">ولادي</button><button class="filter" data-filter="الأكثر مبيعاً">الأكثر مبيعاً</button></div></div>
+ <div id="productGrid" class="product-grid"></div>
+</section>
+<section id="about" class="about"><div><span class="eyebrow">A LITTLE MORE LOVE</span><h2>اختيارات حلوة<br>لأحلى لحظات الطفولة</h2></div><p>في FamilyStore بنهتم إن كل قطعة تجمع بين الشكل الجميل والراحة. اختاري الموديل والمقاس، وإحنا نجهز طلبك.</p></section>
+<footer><a class="brand" href="#"><span class="brand-mark">F</span><span>Family<span class="brand-light">Store</span><small>ملابس أطفال جملة وقطاعي</small></span></a><p>© <span id="year"></span> FamilyStore. جميع الحقوق محفوظة.</p><span>Made with ♥ for families</span></footer>
+
+<div class="overlay" id="cartPanel"><aside class="drawer"><div class="drawer-head"><h2>سلة مشترياتك</h2><button class="x" data-close>×</button></div><div id="cartItems"></div><div class="cart-total"><span>الإجمالي قبل الشحن</span><b id="cartSubtotal">0 ج.م</b></div><button class="primary-btn full" id="checkoutOpen">إتمام الطلب</button></aside></div>
+<div class="overlay" id="checkoutPanel"><aside class="drawer wide"><div class="drawer-head"><h2>بيانات التوصيل</h2><button class="x" data-close>×</button></div>
+<form id="checkoutForm" class="form-grid"><label>الاسم بالكامل<input name="name" required></label><label>رقم الموبايل<input name="phone" required inputmode="tel"></label><label>المحافظة<select name="governorate" id="governorate" required></select></label><label>المنطقة / المركز<input name="area" required></label><label class="span2">العنوان بالتفصيل<textarea name="address" required rows="2"></textarea></label><label class="span2">ملاحظات (اختياري)<textarea name="notes" rows="2"></textarea></label>
+<div class="checkout-summary span2"><div><span>قيمة المنتجات</span><b id="checkoutSubtotal">0</b></div><div><span>الشحن</span><b id="shippingCost">—</b></div><div class="grand"><span>الإجمالي</span><b id="checkoutTotal">0</b></div></div><p class="muted span2">طريقة الدفع: الدفع عند الاستلام.</p><button class="primary-btn full span2" type="submit">تأكيد الطلب عبر واتساب</button></form></aside></div>
+<div class="overlay" id="adminPanel"><aside class="drawer admin-drawer"><div class="drawer-head"><h2>لوحة إدارة المتجر</h2><button class="x" data-close>×</button></div><div id="adminLogin"><p class="muted">لوحة تجريبية محلية — لا تستخدميها لاستقبال طلبات حقيقية قبل تفعيل المصادقة وقاعدة البيانات.</p><label>رمز الإدارة<input id="adminPin" type="password"></label><button class="primary-btn full" id="adminLoginBtn">دخول</button></div>
+<div id="adminContent" hidden><div class="admin-tabs"><button class="active" data-tab="productsTab">المنتجات</button><button data-tab="ordersTab">الطلبات</button><button data-tab="settingsTab">الإعدادات</button></div>
+<section id="productsTab"><h3>إضافة / تعديل منتج</h3><form id="productForm" class="form-grid"><input type="hidden" name="id"><label>اسم المنتج<input name="name" required></label><label>سعر القطاعي (ج.م)<input name="price" type="number" min="1" required></label><label>سعر الجملة (ج.م)<input name="wholesalePrice" type="number" min="1" required></label><label>القسم<select name="category"><option>Baby</option><option>Kids</option><option>Junior</option></select></label><label>النوع<select name="gender"><option>بناتي</option><option>ولادي</option><option>مشترك</option></select></label><label class="span2">الألوان والصور والمقاسات<textarea name="variants" placeholder="كل لون في سطر: أحمر|رابط الصورة|2Y:5, 3Y:4
+أزرق|رابط الصورة|2Y:2, 3Y:1" required></textarea></label><label>أقل كمية لطلب الجملة<input name="wholesaleMin" type="number" min="1" value="1" required></label><label class="span2">وصف مختصر<input name="description"></label><label class="check"><input type="checkbox" name="featured"> الأكثر مبيعاً</label><button class="primary-btn" type="submit">حفظ المنتج</button></form><div id="adminProducts"></div></section>
+<section id="ordersTab" hidden><h3>الطلبات الواردة</h3><div id="adminOrders"></div><button class="secondary-btn" id="exportOrders">تصدير الطلبات CSV</button></section>
+<section id="settingsTab" hidden><h3>إعدادات المتجر</h3><label>رقم واتساب بصيغة دولية بدون +<input id="whatsappNumber" placeholder="201xxxxxxxxx"></label><p class="muted">تكلفة الشحن قابلة للتعديل من جدول المحافظات داخل app.js.</p><button class="primary-btn" id="saveSettings">حفظ الإعدادات</button></section>
+</div></aside></div>
+<div class="toast" id="toast"></div>
+<script src="app.js"></script>
+</body></html>
