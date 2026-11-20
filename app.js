@@ -342,3 +342,70 @@ Promise.all([loadData(),loadSettings()]);
  $("#importFile").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(f)await doImport(f)};
  $("#importTpl").onclick=downloadTemplate;
 })();
+/* ============ تصدير بيانات المبيعات Excel ============ */
+(function(){
+ const XLSX_URL="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+ let xp=null;
+ const loadXlsx=()=>window.XLSX?Promise.resolve():(xp=xp||new Promise((res,rej)=>{const s=document.createElement("script");s.src=XLSX_URL;s.onload=res;s.onerror=()=>{xp=null;rej(new Error("تعذر تحميل مكتبة Excel"))};document.head.appendChild(s)}));
+ const toNum=v=>Number(String(v??"").replace(/ج\.م/g,"").replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[^\d.]/g,""))||0;
+ const LINE=/^-\s*(.+?)\s*\|\s*(.*?)\s*\|\s*(\S+)\s*×\s*(\d+)\s*\((جملة|قطاعي)\)\s*=\s*(.+)$/;
+ const p2=n=>String(n).padStart(2,"0");
+ const fmt=d=>{const x=new Date(d);return isNaN(x)?"":x.getFullYear()+"-"+p2(x.getMonth()+1)+"-"+p2(x.getDate())+" "+p2(x.getHours())+":"+p2(x.getMinutes())};
+ async function fetchOrders(from,to){
+  let q=sb.from("orders").select("*").order("created_at",{ascending:false}).limit(5000);
+  if(from)q=q.gte("created_at",new Date(from+"T00:00:00").toISOString());
+  if(to)q=q.lte("created_at",new Date(to+"T23:59:59").toISOString());
+  const r=await q;if(r.error)throw r.error;return r.data||[];
+ }
+ function sheetFrom(rows,widths){const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=widths.map(w=>({wch:w}));return ws}
+ function buildBook(orders){
+  const st=o=>STATUS_AR[o.status]||o.status||"";
+  const live=orders.filter(o=>o.status!=="cancelled");
+  const head=["رقم الطلب","التاريخ","العميل","الموبايل","المحافظة","المنطقة","العنوان","نوع البيع","قيمة المنتجات","الشحن","الإجمالي","الحالة","ملاحظات العميل"];
+  const A=[head],B=[["رقم الطلب","التاريخ","الحالة","المنتج","اللون","المقاس","الكمية","نوع السعر","المبلغ"]];
+  const byProd={},byStatus={},byGov={};
+  orders.forEach(o=>{
+   const lines=String(o.notes||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+   const own=lines.filter(l=>!l.startsWith("- ")).join(" ");
+   A.push([o.order_number,fmt(o.created_at),o.customer_name,o.phone,o.governorate,o.area,o.address,o.sales_type==="wholesale"?"جملة":"قطاعي",Number(o.subtotal)||0,Number(o.shipping_cost)||0,Number(o.total)||0,st(o),own]);
+   lines.filter(l=>l.startsWith("- ")).forEach(l=>{
+    const m=LINE.exec(l);if(!m)return;
+    const [,name,color,size,qty,mode,amt]=m,a=toNum(amt);
+    B.push([o.order_number,fmt(o.created_at),st(o),name,color,size,Number(qty),mode,a]);
+    if(o.status!=="cancelled"){const p=byProd[name]||(byProd[name]={q:0,a:0});p.q+=Number(qty);p.a+=a}
+   });
+   const s=byStatus[st(o)]||(byStatus[st(o)]={n:0,t:0});s.n++;s.t+=Number(o.total)||0;
+   if(o.status!=="cancelled"){const g=byGov[o.governorate||"-"]||(byGov[o.governorate||"-"]={n:0,t:0});g.n++;g.t+=Number(o.total)||0}
+  });
+  const sum=k=>live.reduce((a,o)=>a+(Number(o[k])||0),0);
+  const S=[["ملخص المبيعات (من غير الطلبات الملغية)",""],["عدد الطلبات",live.length],["قيمة المنتجات",sum("subtotal")],["الشحن",sum("shipping_cost")],["إجمالي المبيعات",sum("total")],["متوسط قيمة الطلب",live.length?Math.round(sum("total")/live.length):0],[""],["حسب المنتج","الكمية","المبيعات"]];
+  Object.entries(byProd).sort((x,y)=>y[1].a-x[1].a).forEach(([k,v])=>S.push([k,v.q,v.a]));
+  S.push([""],["حسب الحالة","عدد الطلبات","الإجمالي"]);
+  Object.entries(byStatus).forEach(([k,v])=>S.push([k,v.n,v.t]));
+  S.push([""],["حسب المحافظة","عدد الطلبات","الإجمالي"]);
+  Object.entries(byGov).sort((x,y)=>y[1].t-x[1].t).forEach(([k,v])=>S.push([k,v.n,v.t]));
+  const wb=XLSX.utils.book_new();wb.Workbook={Views:[{RTL:true}]};
+  XLSX.utils.book_append_sheet(wb,sheetFrom(S,[34,16,16]),"ملخص");
+  XLSX.utils.book_append_sheet(wb,sheetFrom(A,[14,17,20,15,14,16,34,10,13,9,11,13,28]),"الطلبات");
+  XLSX.utils.book_append_sheet(wb,sheetFrom(B,[14,17,12,26,12,9,8,10,11]),"تفاصيل المنتجات");
+  return {wb,A};
+ }
+ const box=document.createElement("div");box.className="admin-list";box.style.cssText="display:block;margin:12px 0";
+ box.innerHTML='<b>تصدير بيانات المبيعات (Excel)</b><div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"><label>من تاريخ<input type="date" id="salesFrom"></label><label>إلى تاريخ<input type="date" id="salesTo"></label></div><button type="button" class="primary-btn" id="salesExport">📊 تحميل ملف المبيعات Excel</button><p class="muted">من غير تواريخ هيتصدر كل الطلبات. الملف فيه 3 صفحات: ملخص، الطلبات، تفاصيل المنتجات. الطلبات الملغية مش بتتحسب في الإجماليات.</p>';
+ const tab=$("#ordersTab");tab.insertBefore(box,tab.children[1]||null);
+ $("#salesExport").onclick=async e=>{
+  if(!sb||!isAdmin)return toast("سجّلي دخول الإدارة أولاً");
+  const btn=e.currentTarget;btn.disabled=true;
+  try{
+   const orders=await fetchOrders($("#salesFrom").value,$("#salesTo").value);
+   if(!orders.length){toast("مفيش طلبات في الفترة دي");return}
+   const day=new Date(),name="FamilyStore-sales-"+day.getFullYear()+"-"+p2(day.getMonth()+1)+"-"+p2(day.getDate());
+   try{await loadXlsx();const {wb}=buildBook(orders);XLSX.writeFile(wb,name+".xlsx");toast("تم تحميل ملف المبيعات")}
+   catch(err){
+    const csv="\uFEFF"+orders.map(o=>[o.order_number,fmt(o.created_at),o.customer_name,o.phone,o.governorate,o.total,STATUS_AR[o.status]||o.status].map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\n");
+    const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download=name+".csv";a.click();toast("اتحمل CSV لأن مكتبة Excel ما اشتغلتش");
+   }
+  }catch(err){toast("تعذر تصدير المبيعات: "+(err.message||err))}
+  btn.disabled=false;
+ };
+})();
