@@ -555,3 +555,41 @@ Promise.all([loadData(),loadSettings()]);
   };
   if(products.length)renderProducts();
 })();
+/* ===== addon6: ربط حالة الطلب بالمخزون ===== */
+(function(){
+  const HOLD=["confirmed","shipped","delivered","paid"];
+  function parseItems(notes){
+    const out=[];
+    String(notes||"").split("\n").forEach(l=>{
+      const m=l.match(/^-\s*(.+?) \| (.*?) \| (.+?) × (\d+) \(/);
+      if(m)out.push({name:m[1].trim(),color:m[2].trim(),size:m[3].trim(),qty:Number(m[4])});
+    });
+    return out;
+  }
+  async function adjust(o,sign){
+    let miss=0;
+    for(const it of parseItems(o.notes)){
+      const p=products.find(x=>x.name.trim()===it.name);
+      const v=p&&(p.variants.find(x=>(x.color||"")===it.color)||(p.variants.length===1?p.variants[0]:null));
+      if(!v||!v.id){miss++;continue}
+      const g=await sb.from("product_sizes").select("stock").eq("variant_id",v.id).eq("size_label",it.size).maybeSingle();
+      if(g.error||!g.data){miss++;continue}
+      const ns=Math.max(0,Number(g.data.stock||0)+sign*it.qty);
+      const u=await sb.from("product_sizes").update({stock:ns}).eq("variant_id",v.id).eq("size_label",it.size).select();
+      if(u.error||!u.data||!u.data.length)miss++;
+    }
+    return miss;
+  }
+  setOrderStatus=async function(id,status){
+    const o=adminOrders.find(x=>x.id===id);if(!o)return;
+    const was=!!o.stock_deducted,want=HOLD.includes(status);
+    let miss=0,flag=was;
+    if(want&&!was){miss=await adjust(o,-1);flag=true}
+    else if(!want&&was){miss=await adjust(o,+1);flag=false}
+    const r=await sb.from("orders").update({status,stock_deducted:flag}).eq("id",id).select();
+    if(r.error||!r.data||!r.data.length)return toast("تعذر تحديث الحالة (شغّلي ملف SQL)");
+    o.status=status;o.stock_deducted=flag;
+    await loadData();renderAdmin();
+    toast(miss?"تم تحديث الحالة، لكن "+miss+" منتج لم يُطابق المخزون":(want&&!was?"تم تأكيد الطلب وخصم المخزون":(!want&&was?"تم إرجاع الكمية للمخزون":"تم تحديث الحالة")));
+  };
+})();
