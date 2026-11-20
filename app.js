@@ -693,3 +693,30 @@ ${p.description?`<p style="font-size:13px;color:var(--muted);margin:6px 0">${esc
   });
   if(products.length)renderProducts();
 })();
+/* ===== addon8: إخفاء "جملة" — سعر واحد (بعد الخصم) لكل العملاء ===== */
+(function(){
+  const st=document.createElement("style");
+  st.textContent=".mode-label{display:none!important}";
+  document.head.appendChild(st);
+  priceMode="retail";
+  itemPrice=function(item){
+    const p=products.find(x=>x.id===item.id);if(!p)return 0;
+    const w=Number(p.wholesalePrice),r=Number(p.price);
+    return w>0&&w<r?w:r;
+  };
+  cart.forEach(i=>i.mode="retail");saveCart();
+  function clean(root){
+    root.querySelectorAll(".price-pair,.pd-price").forEach(box=>{
+      box.querySelectorAll(":scope>span").forEach(s=>{
+        const t=s.firstChild&&s.firstChild.textContent?s.firstChild.textContent.trim():"";
+        if(t==="جملة")s.remove();else if(t==="قطاعي")s.firstChild.textContent="السعر";
+      });
+    });
+    root.querySelectorAll(".pd-mode").forEach(m=>{const t=m.previousElementSibling;if(t&&t.classList.contains("pd-sec"))t.remove();m.remove()});
+  }
+  const base=renderProducts;
+  renderProducts=function(){base();clean(document.getElementById("productGrid"))};
+  const pd=document.getElementById("pdPage");
+  if(pd)new MutationObserver(()=>clean(pd)).observe(pd,{childList:true});
+  if(products.length)renderProducts();
+})();
