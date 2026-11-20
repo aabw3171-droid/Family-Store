@@ -764,3 +764,103 @@ ${p.description?`<p style="font-size:13px;color:var(--muted);margin:6px 0">${esc
   $i("dcApply").onclick=()=>{const n=Number($i("dcPct").value);if(!(n>=1&&n<=90))return toast("اكتبي نسبة بين 1 و 90");run(n)};
   $i("dcClear").onclick=()=>run(0);
 })();
+/* ===== addon10: أقسام صيفي / شتوي ===== */
+(function(){
+  const CAT={Baby:"بيبي",Kids:"أطفال",Junior:"جونيور"},SEA={summer:"صيفي",winter:"شتوي"};
+  let activeSeason="";
+  const sOf=p=>p.season||"winter";
+  const label=p=>(CAT[p.category]||p.category)+" "+(SEA[sOf(p)]||"");
+
+  const st=document.createElement("style");
+  st.textContent=".category-grid.six{grid-template-columns:repeat(3,1fr);gap:14px}.category-grid.six .category-tile{height:150px}.category-grid.six .category-tile strong{font-size:24px}.category-tile.summer{filter:saturate(1.15) brightness(1.08)}.season-label{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}.season-label select{border:1px solid var(--line);border-radius:20px;padding:7px 10px;background:#fff;color:var(--ink)}@media(max-width:760px){.category-grid.six{grid-template-columns:repeat(2,1fr)}.category-grid.six .category-tile{height:115px;padding:14px}.category-grid.six .category-tile strong{font-size:19px}}";
+  document.head.appendChild(st);
+
+  visibleProducts=function(){return products.filter(p=>p.active&&(!activeSeason||sOf(p)===activeSeason))};
+
+  const grid=document.querySelector(".category-grid");
+  if(grid){
+    grid.classList.add("six");
+    const defs=[["Baby","baby","BABY","من 6 شهور إلى سنتين"],["Kids","kids","KIDS","من 3 إلى 8 سنوات"],["Junior","junior","JUNIOR","من 9 إلى 16 سنة"]];
+    let h="",n=1;
+    [["summer","SUMMER"],["winter","WINTER"]].forEach(([s,S])=>defs.forEach(([c,cl,C,sm])=>{
+      h+=`<button type="button" data-cat="${c}" data-season="${s}" class="category-tile ${cl} ${s}"><span>0${n++} / ${C} · ${S}</span><strong>${CAT[c]} ${SEA[s]}</strong><small>${sm}</small></button>`;
+    }));
+    grid.innerHTML=h;
+    grid.querySelectorAll(".category-tile").forEach(b=>b.onclick=()=>{
+      activeCategory=b.dataset.cat;activeSeason=b.dataset.season;activeFilter="الكل";
+      document.querySelectorAll(".filter").forEach(x=>x.classList.toggle("active",x.dataset.filter==="الكل"));
+      const sf=document.getElementById("seasonFilter");if(sf)sf.value=activeSeason;
+      document.getElementById("shop").scrollIntoView();renderProducts();
+    });
+  }
+  const fb=document.querySelector(".filters");
+  if(fb){
+    const l=document.createElement("label");l.className="season-label";
+    l.innerHTML='الموسم <select id="seasonFilter"><option value="">الكل</option><option value="summer">صيفي</option><option value="winter">شتوي</option></select>';
+    fb.insertBefore(l,fb.firstChild);
+    l.querySelector("select").onchange=e=>{activeSeason=e.target.value;renderProducts()};
+  }
+
+  const baseR=renderProducts;
+  renderProducts=function(){
+    baseR();
+    document.querySelectorAll("#productGrid .product-card").forEach(c=>{
+      const p=products.find(x=>x.id===c.dataset.pid);const s=c.querySelector(".product-info>small");
+      if(p&&s)s.textContent=label(p)+" · "+p.gender;
+    });
+  };
+  const pd=document.getElementById("pdPage");
+  if(pd)new MutationObserver(()=>{
+    const m=location.hash.match(/^#p=(.+)-(\d+)$/);const p=m&&products.find(x=>x.id===m[1]);
+    const s=pd.querySelector(".pd-info>small");if(p&&s)s.textContent=label(p)+" · "+p.gender;
+  }).observe(pd,{childList:true});
+
+  async function loadSeasons(){
+    if(!sb)return;
+    const r=await sb.from("products").select("id,season");
+    if(r.error||!r.data)return;
+    const m={};r.data.forEach(x=>m[x.id]=x.season);
+    products.forEach(p=>{p.season=m[p.id]||"winter"});
+    renderProducts();
+    if(isAdmin){try{renderAdmin()}catch(e){}}
+  }
+  const baseL=loadData;
+  loadData=async function(){const x=await baseL.apply(this,arguments);await loadSeasons();return x};
+
+  const catSel=document.querySelector("#productForm select[name=category]");
+  if(catSel){
+    const lab=document.createElement("label");
+    lab.innerHTML='الموسم<select name="season"><option value="winter">شتوي</option><option value="summer">صيفي</option></select>';
+    catSel.parentNode.insertAdjacentElement("afterend",lab);
+  }
+  const seasonSel=()=>document.querySelector("#productForm [name=season]");
+  if(sb){
+    const baseFrom=sb.from.bind(sb);
+    sb.from=function(t){
+      const q=baseFrom(t);
+      if(t==="products"&&q.upsert){const u=q.upsert.bind(q);q.upsert=function(r){const s=seasonSel();return u(s?Object.assign({},r,{season:s.value}):r)}}
+      return q;
+    };
+  }
+  const baseE=editProduct;
+  editProduct=function(id){baseE(id);const p=products.find(x=>x.id===id),s=seasonSel();if(p&&s)s.value=sOf(p)};
+  const baseReset=resetProductForm;
+  resetProductForm=function(){baseReset();const s=seasonSel();if(s)s.value="winter"};
+
+  const dsec=document.getElementById("discountTab");
+  if(dsec){
+    const box=document.createElement("div");
+    box.innerHTML='<hr style="margin:22px 0;border:0;border-top:1px solid var(--line)"><h3>نقل منتجات لموسم</h3><p class="muted">بيستخدم نفس اختيار القسم والنوع اللي فوق.</p><label>نقل إلى<select id="dsTo"><option value="summer">صيفي</option><option value="winter">شتوي</option></select></label><button class="primary-btn" id="dsMove" type="button">نقل المنتجات</button>';
+    dsec.appendChild(box);
+    document.getElementById("dsMove").onclick=async()=>{
+      const c=document.getElementById("dcCat").value,g=document.getElementById("dcGen").value,to=document.getElementById("dsTo").value;
+      const list=products.filter(p=>(!c||p.category===c)&&(!g||p.gender===g));
+      if(!list.length)return toast("لا توجد منتجات في هذا النطاق");
+      if(!confirm("نقل "+list.length+" منتج إلى "+SEA[to]+"؟"))return;
+      const r=await sb.from("products").update({season:to}).in("id",list.map(p=>p.id)).select();
+      if(r.error||!r.data||!r.data.length)return toast("تعذر النقل (شغّلي ملف SQL)");
+      await loadData();renderAdmin();toast("تم نقل "+r.data.length+" منتج إلى "+SEA[to]);
+    };
+  }
+  loadSeasons();
+})();
