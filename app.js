@@ -593,3 +593,103 @@ Promise.all([loadData(),loadSettings()]);
     toast(miss?"تم تحديث الحالة، لكن "+miss+" منتج لم يُطابق المخزون":(want&&!was?"تم تأكيد الطلب وخصم المخزون":(!want&&was?"تم إرجاع الكمية للمخزون":"تم تحديث الحالة")));
   };
 })();
+/* ===== addon7: صفحة المنتج (اختيار اللون والمقاس ثم السلة) ===== */
+(function(){
+  const st=document.createElement("style");
+  st.textContent=`
+.product-card{cursor:pointer}.product-card .product-info>label{display:none}
+.pd{position:fixed;inset:0;background:#fff;z-index:9;overflow:auto;-webkit-overflow-scrolling:touch}.pd[hidden]{display:none}
+.pd-bar{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--line);padding:12px 5vw;display:flex;justify-content:space-between;align-items:center;z-index:2}
+.pd-bar button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 14px;font-weight:700;color:var(--ink)}
+.pd-body{max-width:980px;margin:0 auto;padding:20px 5vw 40px;display:grid;grid-template-columns:1fr 1fr;gap:34px}
+.pd-img{background:#f2eee8;border-radius:14px;overflow:hidden;aspect-ratio:1/1;display:grid;place-items:center;position:relative;color:#9b9b91;font-size:40px}.pd-img img{width:100%;height:100%;object-fit:cover}
+.pd-info h2{margin:4px 0 6px;font-size:24px}.pd-info small{color:var(--muted)}
+.pd-sec{margin:18px 0 6px;font-weight:800;font-size:14px}
+.pd-sw,.pd-sz{display:flex;flex-wrap:wrap;gap:8px}
+.pd-sw button{border:2px solid var(--line);background:#fff;border-radius:10px;padding:4px 10px 4px 4px;display:flex;align-items:center;gap:8px;font-weight:700;font-size:13px;color:var(--ink)}.pd-sw button.on{border-color:var(--green);background:#f1f6f3}
+.pd-sw img{width:38px;height:38px;border-radius:7px;object-fit:cover;background:#eee}.pd-sw .nosw{width:38px;height:38px;border-radius:7px;background:#eee}
+.pd-sz button{min-width:58px;border:2px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;font-weight:800;color:var(--ink)}.pd-sz button.on{border-color:var(--green);background:var(--green);color:#fff}.pd-sz button:disabled{opacity:.4;text-decoration:line-through;cursor:not-allowed}
+.pd-qty{display:flex;align-items:center;gap:12px}.pd-qty button{width:38px;height:38px;border:1px solid var(--line);background:#fff;border-radius:8px;font-size:20px;font-weight:800}.pd-qty b{min-width:28px;text-align:center;font-size:17px}
+.pd-price{display:flex;gap:18px;flex-wrap:wrap;margin:8px 0}.pd-price span{font-size:12px;color:var(--muted)}.pd-price b{display:block;font-size:20px;color:var(--green)}.pd-price b.was{font-size:15px;color:var(--muted);text-decoration:line-through;font-weight:600}
+.pd-mode{display:flex;gap:8px}.pd-mode button{flex:1;border:2px solid var(--line);background:#fff;border-radius:10px;padding:9px;font-weight:700;color:var(--ink)}.pd-mode button.on{border-color:var(--green);background:#f1f6f3}
+.pd-add{width:100%;margin-top:22px}.pd-note{font-size:12px;color:var(--muted);margin-top:8px}
+@media(max-width:760px){.pd-body{grid-template-columns:1fr;gap:16px}}`;
+  document.head.appendChild(st);
+
+  const page=document.createElement("div");page.className="pd";page.hidden=true;page.id="pdPage";
+  document.body.appendChild(page);
+  let cur=null;
+
+  function hide(){page.hidden=true;document.body.style.overflow="";cur=null}
+  function close(){hide();if(/^#p=/.test(location.hash))history.replaceState(null,"",location.pathname+location.search)}
+  function priceHTML(p){
+    const w=Number(p.wholesalePrice),r=Number(p.price);
+    return (w>0&&r>0&&w<r)
+      ?'<span>السعر قبل الخصم<b class="was">'+money(r)+'</b></span><span>السعر بعد الخصم<b>'+money(w)+'</b></span><span style="align-self:end"><b style="font-size:14px;color:#d6455d">خصم '+Math.round((1-w/r)*100)+'%</b></span>'
+      :'<span>قطاعي<b>'+money(r)+'</b></span><span>جملة<b>'+money(w||r)+'</b></span>';
+  }
+  function draw(){
+    const c=cur,p=c.p,v=p.variants[c.vi],img=v.image||p.image;
+    const sizes=Object.entries(v.sizes||{});
+    const max=c.size?Number(v.sizes[c.size]||0):0;
+    page.innerHTML=
+`<div class="pd-bar"><button type="button" id="pdBack">→ رجوع للمتجر</button><button type="button" id="pdCart">السلة ${cart.reduce((a,i)=>a+i.qty,0)}</button></div>
+<div class="pd-body"><div class="pd-img">${img?`<img src="${esc(img)}" alt="${esc(p.name)}">`:"✿"}</div>
+<div class="pd-info"><small>${esc(p.category)} · ${esc(p.gender)}</small><h2>${esc(p.name)}</h2>
+<div class="pd-price">${priceHTML(p)}</div>
+${p.description?`<p style="font-size:13px;color:var(--muted);margin:6px 0">${esc(p.description)}</p>`:""}
+<div class="pd-sec">اللون: ${esc(v.color||"")}</div>
+<div class="pd-sw">${p.variants.map((x,i)=>`<button type="button" data-vi="${i}" class="${i===c.vi?"on":""}">${(x.image||p.image)?`<img src="${esc(x.image||p.image)}" alt="">`:'<span class="nosw"></span>'}${esc(x.color||"-")}</button>`).join("")}</div>
+<div class="pd-sec">المقاس</div>
+<div class="pd-sz">${sizes.length?sizes.map(([z,q])=>`<button type="button" data-sz="${esc(z)}" class="${c.size===z?"on":""}" ${q<=0?"disabled":""}>${esc(z)}</button>`).join(""):'<span class="pd-note">غير متاح حالياً</span>'}</div>
+<div class="pd-note">${c.size?"المتاح من هذا المقاس: "+max+" قطعة":"اختاري المقاس"}</div>
+<div class="pd-sec">نوع السعر</div>
+<div class="pd-mode"><button type="button" data-m="retail" class="${priceMode==="retail"?"on":""}">قطاعي</button><button type="button" data-m="wholesale" class="${priceMode==="wholesale"?"on":""}">جملة${p.wholesaleMin>1?" (من "+p.wholesaleMin+" قطع)":""}</button></div>
+<div class="pd-sec">الكمية</div>
+<div class="pd-qty"><button type="button" id="pdMinus">−</button><b>${c.qty}</b><button type="button" id="pdPlus">+</button></div>
+<button class="primary-btn pd-add" type="button" id="pdAdd">أضيفي للسلة والانتقال للسلة</button></div></div>`;
+    page.querySelector("#pdBack").onclick=close;
+    page.querySelector("#pdCart").onclick=()=>{close();renderCart();showPanel("#cartPanel")};
+    page.querySelectorAll("[data-vi]").forEach(b=>b.onclick=()=>{c.vi=Number(b.dataset.vi);c.size="";c.qty=1;history.replaceState(null,"","#p="+p.id+"-"+c.vi);draw()});
+    page.querySelectorAll("[data-sz]").forEach(b=>b.onclick=()=>{c.size=b.dataset.sz;c.qty=1;draw()});
+    page.querySelectorAll("[data-m]").forEach(b=>b.onclick=()=>{priceMode=b.dataset.m;const g=document.getElementById("globalPriceMode");if(g)g.value=priceMode;draw()});
+    page.querySelector("#pdMinus").onclick=()=>{if(c.qty>1){c.qty--;draw()}};
+    page.querySelector("#pdPlus").onclick=()=>{if(!c.size)return toast("اختاري المقاس أولاً");if(c.qty<max){c.qty++;draw()}else toast("الكمية المطلوبة غير متاحة")};
+    page.querySelector("#pdAdd").onclick=()=>{
+      if(!c.size)return toast("اختاري المقاس أولاً");
+      const stock=Number(v.sizes[c.size]||0);if(stock<=0)return toast("المقاس غير متاح");
+      let item=cart.find(x=>x.id===p.id&&x.size===c.size&&x.colorIndex===c.vi&&x.mode===priceMode);
+      if(item){item.qty=Math.min(stock,item.qty+c.qty)}
+      else cart.push({id:p.id,size:c.size,colorIndex:c.vi,color:v.color,qty:Math.min(stock,c.qty),mode:priceMode});
+      saveCart();renderCart();close();showPanel("#cartPanel");toast("تمت الإضافة للسلة");
+    };
+  }
+  function open(id,vi,push){
+    const p=products.find(x=>x.id===id);if(!p||!p.variants[vi])return;
+    cur={p,vi,size:"",qty:1};
+    if(push)history.pushState(null,"","#p="+id+"-"+vi);
+    draw();page.hidden=false;page.scrollTop=0;document.body.style.overflow="hidden";
+  }
+  function fromHash(){
+    const m=location.hash.match(/^#p=(.+)-(\d+)$/);
+    if(m){if(!cur||cur.p.id!==m[1])open(m[1],Number(m[2]),false)}else if(cur)hide();
+  }
+  window.addEventListener("hashchange",fromHash);
+
+  const base=renderProducts;
+  renderProducts=function(){
+    base();
+    document.querySelectorAll("#productGrid .product-card").forEach(card=>{
+      const btn=card.querySelector(".add-btn");if(!btn)return;
+      const m=(btn.getAttribute("onclick")||"").match(/addToCart\('([^']+)',(\d+)\)/);if(!m)return;
+      card.dataset.pid=m[1];card.dataset.vi=m[2];
+      btn.textContent="اختاري اللون والمقاس";btn.setAttribute("onclick","");
+    });
+    if(!cur&&/^#p=/.test(location.hash))fromHash();
+  };
+  document.getElementById("productGrid").addEventListener("click",e=>{
+    const card=e.target.closest(".product-card");if(!card||!card.dataset.pid)return;
+    open(card.dataset.pid,Number(card.dataset.vi),true);
+  });
+  if(products.length)renderProducts();
+})();
