@@ -409,3 +409,31 @@ Promise.all([loadData(),loadSettings()]);
   btn.disabled=false;
  };
 })();
+/* ===== addon3: السعر قبل/بعد الخصم + شارة نسبة الخصم ===== */
+(function(){
+  const st=document.createElement("style");
+  st.textContent=".product-image{position:relative}.disc-badge{position:absolute;top:10px;right:10px;background:#d6455d;color:#fff;font-weight:900;font-size:13px;padding:5px 11px;border-radius:20px;z-index:2;box-shadow:0 2px 6px rgba(0,0,0,.2)}.price-pair b.was{color:var(--muted);text-decoration:line-through;font-weight:600}";
+  document.head.appendChild(st);
+  function decorate(){
+    document.querySelectorAll("#productGrid .product-card").forEach(card=>{
+      if(card.dataset.disc)return;
+      const ph=card.querySelector(".product-image");if(!ph)return;
+      const p=products.find(x=>"photo-"+x.id===ph.id);if(!p)return;
+      card.dataset.disc="1";
+      const w=Number(p.wholesalePrice),r=Number(p.price);
+      if(!(w>0&&r>0&&w<r))return;
+      const pct=Math.round((1-w/r)*100);
+      const pair=card.querySelector(".price-pair");
+      if(pair)pair.innerHTML='<span>السعر قبل الخصم <b class="was">'+money(r)+'</b></span><span>السعر بعد الخصم <b>'+money(w)+'</b></span>';
+      const b=document.createElement("div");b.className="disc-badge";b.textContent="خصم "+pct+"%";ph.appendChild(b);
+    });
+  }
+  const grid=document.getElementById("productGrid");
+  if(grid)new MutationObserver(decorate).observe(grid,{childList:true});
+  decorate();
+  document.querySelectorAll("#productForm label").forEach(l=>{
+    const t=l.firstChild;if(!t||t.nodeType!==3)return;
+    if(t.textContent.includes("سعر القطاعي"))t.textContent="السعر قبل الخصم – قطاعي (ج.م)";
+    else if(t.textContent.includes("سعر الجملة"))t.textContent="السعر بعد الخصم – جملة (ج.م)";
+  });
+})();
