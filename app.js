@@ -240,3 +240,105 @@ $("#saveSettings").onclick=async()=>{
 $("#year").textContent=new Date().getFullYear();
 renderCart();
 Promise.all([loadData(),loadSettings()]);
+/* ============ استيراد منتجات من Excel / CSV ============ */
+(function(){
+ const XLSX_URL="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+ let xp=null;
+ const loadXlsx=()=>window.XLSX?Promise.resolve():(xp=xp||new Promise((res,rej)=>{const s=document.createElement("script");s.src=XLSX_URL;s.onload=res;s.onerror=()=>{xp=null;rej(new Error("تعذر تحميل مكتبة Excel. جرّبي حفظ الملف بصيغة CSV."))};document.head.appendChild(s)}));
+ const norm=s=>String(s??"").trim().replace(/[\u064B-\u0652]/g,"").replace(/[\s_\-]/g,"").replace(/[أإآ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي").toLowerCase();
+ const COLS={name:["اسمالمنتج","الاسم","name","product"],price:["سعرالقطاعي","القطاعي","سعرالبيع","price","retail"],wprice:["سعرالجمله","الجمله","wholesale","wholesaleprice"],wmin:["اقلكميهجمله","اقلكميه","الحدالادني","wholesalemin","min"],cat:["القسم","category"],gender:["النوع","الجنس","gender"],color:["اللون","color"],size:["المقاس","size"],qty:["الكميه","المخزون","qty","stock"],img:["رابطالصوره","الصوره","image","imageurl"],desc:["وصف","الوصف","description"],feat:["الاكثرمبيعا","مميز","featured"]};
+ const LOOK={};Object.entries(COLS).forEach(([k,a])=>a.forEach(x=>LOOK[x]=k));
+ const toNum=v=>Number(String(v??"").replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[^\d.]/g,""));
+ const CAT={baby:"Baby",بيبي:"Baby",kids:"Kids",اطفال:"Kids",طفل:"Kids",junior:"Junior",جونيور:"Junior"};
+ const GEN={بناتي:"بناتي",بنات:"بناتي",girl:"بناتي",girls:"بناتي",ولادي:"ولادي",اولاد:"ولادي",ولد:"ولادي",boy:"ولادي",boys:"ولادي",مشترك:"مشترك",both:"مشترك",unisex:"مشترك"};
+ function parseCSV(text){
+  text=text.replace(/^\uFEFF/,"");
+  const first=text.split(/\r?\n/)[0]||"";
+  const d=[",",";","\t"].map(c=>[c,first.split(c).length]).sort((a,b)=>b[1]-a[1])[0][0];
+  const rows=[];let row=[],cur="",q=false;
+  for(let i=0;i<text.length;i++){const c=text[i];
+   if(q){if(c==='"'){if(text[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}
+   else if(c==='"')q=true;
+   else if(c===d){row.push(cur);cur=""}
+   else if(c==="\n"||c==="\r"){if(c==="\r"&&text[i+1]==="\n")i++;row.push(cur);cur="";rows.push(row);row=[]}
+   else cur+=c}
+  if(cur!==""||row.length){row.push(cur);rows.push(row)}
+  return rows.filter(r=>r.some(x=>String(x).trim()!==""));
+ }
+ async function readRows(file){
+  if(/\.csv$/i.test(file.name)){return parseCSV(await file.text())}
+  await loadXlsx();
+  const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:"",raw:false}).filter(r=>r.some(x=>String(x).trim()!==""));
+ }
+ function build(rows){
+  const errors=[],map={};
+  const head=rows[0]||[];head.forEach((h,i)=>{const k=LOOK[norm(h)];if(k&&!(k in map))map[k]=i});
+  ["name","price","size"].forEach(k=>{if(!(k in map))errors.push("عمود ناقص: "+({name:"اسم المنتج",price:"سعر القطاعي",size:"المقاس"})[k])});
+  if(errors.length)return {errors};
+  const g=(r,k)=>k in map?String(r[map[k]]??"").trim():"";
+  const prods=new Map();
+  rows.slice(1).forEach((r,i)=>{
+   const ln="سطر "+(i+2)+": ",name=g(r,"name");
+   if(!name&&!g(r,"size"))return;
+   if(!name)return errors.push(ln+"اسم المنتج فاضي");
+   let p=prods.get(name);
+   if(!p){
+    const price=toNum(g(r,"price")),wp=g(r,"wprice")?toNum(g(r,"wprice")):price,wm=g(r,"wmin")?toNum(g(r,"wmin")):1;
+    if(!(price>0))return errors.push(ln+"سعر القطاعي غير صحيح ("+name+")");
+    const cat=CAT[norm(g(r,"cat"))];if(!cat)return errors.push(ln+"القسم غير معروف (بيبي / أطفال / جونيور)");
+    const gen=g(r,"gender")?GEN[norm(g(r,"gender"))]:"مشترك";if(!gen)return errors.push(ln+"النوع غير معروف (بناتي / ولادي / مشترك)");
+    p={name,price,wprice:wp>0?wp:price,wmin:wm>0?wm:1,cat,gen,desc:g(r,"desc"),feat:["نعم","yes","1","true","x","✓"].includes(norm(g(r,"feat"))),variants:new Map()};
+    prods.set(name,p);
+   }
+   const size=g(r,"size").toUpperCase().replace(/\s+/g,"");
+   if(!size)return errors.push(ln+"المقاس فاضي");
+   const color=g(r,"color")||"لون واحد";
+   let v=p.variants.get(color);if(!v){v={color,img:"",sizes:{}};p.variants.set(color,v)}
+   const img=g(r,"img");if(img&&/^https?:\/\//i.test(img)&&!v.img)v.img=img;
+   const qty=g(r,"qty")?toNum(g(r,"qty")):0;
+   v.sizes[size]=(v.sizes[size]||0)+(qty>0?qty:0);
+  });
+  return {errors,prods:[...prods.values()]};
+ }
+ async function doImport(file){
+  const st=$("#importStatus");
+  if(!sb||!isAdmin)return toast("سجّلي دخول الإدارة أولاً");
+  st.textContent="جاري قراءة الملف...";
+  let res;
+  try{res=build(await readRows(file))}catch(e){st.textContent="";return toast(e.message||"تعذر قراءة الملف")}
+  if(res.errors.length){st.textContent="";return alert("في مشاكل في الملف:\n"+res.errors.slice(0,8).join("\n")+(res.errors.length>8?"\n...و "+(res.errors.length-8)+" مشكلة تانية":""))}
+  const have=new Set(products.map(p=>p.name.trim().toLowerCase()));
+  const skipped=[],list=res.prods.filter(p=>have.has(p.name.toLowerCase())?(skipped.push(p.name),false):true);
+  if(!list.length){st.textContent="";return alert("كل المنتجات اللي في الملف موجودة بالفعل.")}
+  const nv=list.reduce((a,p)=>a+p.variants.size,0);
+  if(!confirm("هيتم إضافة "+list.length+" منتج ("+nv+" لون)."+(skipped.length?"\nهيتم تخطي الموجود بالفعل: "+skipped.join("، "):"")+"\nمتابعة؟")){st.textContent="";return}
+  const prows=[],vrows=[],srows=[];
+  list.forEach(p=>{const id=uuid();let n=0,first="";
+   p.variants.forEach(v=>{const vid=uuid();if(!first)first=v.img;vrows.push({id:vid,product_id:id,color_name:v.color,image_url:v.img||null,sort_order:n++});Object.entries(v.sizes).forEach(([z,q])=>srows.push({product_id:id,variant_id:vid,size_label:z,stock:q}))});
+   prows.push({id,name:p.name,description:p.desc,category:p.cat,gender:p.gen,retail_price:p.price,wholesale_price:p.wprice,wholesale_min:p.wmin,image_url:first||null,featured:p.feat,is_active:true,updated_at:new Date().toISOString()});});
+  const ids=prows.map(p=>p.id);
+  try{
+   st.textContent="جاري الحفظ...";
+   let r=await sb.from("products").insert(prows);if(r.error)throw r.error;
+   r=await sb.from("product_variants").insert(vrows);if(r.error)throw r.error;
+   r=await sb.from("product_sizes").insert(srows);if(r.error)throw r.error;
+   await loadData();renderAdmin();st.textContent="";
+   toast("تم استيراد "+list.length+" منتج. ضيفي الصور من زر تعديل.");
+  }catch(err){
+   try{await sb.from("product_sizes").delete().in("product_id",ids);await sb.from("product_variants").delete().in("product_id",ids);await sb.from("products").delete().in("id",ids)}catch(e){}
+   st.textContent="";toast("تعذر الاستيراد: "+(err.message||err));
+  }
+ }
+ async function downloadTemplate(){
+  const H=["اسم المنتج","سعر القطاعي","سعر الجملة","أقل كمية جملة","القسم","النوع","اللون","المقاس","الكمية","رابط الصورة","وصف","الأكثر مبيعاً"];
+  const R=[["طقم صيفي بناتي",420,330,6,"أطفال","بناتي","وردي","4Y",5,"","طقم مريح","نعم"],["طقم صيفي بناتي",420,330,6,"أطفال","بناتي","وردي","6Y",3,"","",""],["طقم صيفي بناتي",420,330,6,"أطفال","بناتي","أبيض","4Y",4,"","",""],["سالوبت بيبي",310,245,6,"بيبي","مشترك","أزرق","6M",4,"","ناعم ومناسب للبشرة الحساسة",""]];
+  try{await loadXlsx();const ws=XLSX.utils.aoa_to_sheet([H,...R]),wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"المنتجات");XLSX.writeFile(wb,"FamilyStore-products-template.xlsx")}
+  catch(e){const csv="\uFEFF"+[H,...R].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\n");const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));a.download="FamilyStore-products-template.csv";a.click()}
+ }
+ const box=document.createElement("div");box.className="admin-list";box.style.cssText="display:block;margin:12px 0";
+ box.innerHTML='<b>استيراد منتجات من Excel / CSV</b><p class="muted">كل سطر = مقاس واحد للون واحد من المنتج. المنتج الموجود بنفس الاسم بيتم تخطيه. الصور بتضيفيها بعد الاستيراد من زر "تعديل".</p><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><label class="upload-btn">📥 رفع ملف Excel / CSV<input id="importFile" type="file" accept=".xlsx,.xls,.csv"></label><button type="button" class="secondary-btn" id="importTpl">تحميل نموذج</button><span class="vstatus" id="importStatus"></span></div>';
+ $("#productsTab").insertBefore(box,$("#productForm"));
+ $("#importFile").onchange=async e=>{const f=e.target.files[0];e.target.value="";if(f)await doImport(f)};
+ $("#importTpl").onclick=downloadTemplate;
+})();
