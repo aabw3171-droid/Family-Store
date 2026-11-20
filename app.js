@@ -720,3 +720,47 @@ ${p.description?`<p style="font-size:13px;color:var(--muted);margin:6px 0">${esc
   if(pd)new MutationObserver(()=>clean(pd)).observe(pd,{childList:true});
   if(products.length)renderProducts();
 })();
+/* ===== addon9: تطبيق نسبة خصم على كل المنتجات أو قسم ===== */
+(function(){
+  const tabs=document.querySelector(".admin-tabs"),content=document.getElementById("adminContent"),logout=document.getElementById("adminLogout");
+  if(!tabs||!content)return;
+  const tb=document.createElement("button");tb.type="button";tb.dataset.tab="discountTab";tb.textContent="الخصومات";
+  tabs.insertBefore(tb,logout);
+  const sec=document.createElement("section");sec.id="discountTab";sec.hidden=true;
+  sec.innerHTML=`<h3>تطبيق نسبة خصم</h3>
+<p class="muted">اكتبي النسبة واختاري المنتجات. السعر بعد الخصم = سعر القطاعي ناقص النسبة، ويتحسب لكل منتج لوحده.</p>
+<div class="form-grid">
+<label>القسم<select id="dcCat"><option value="">كل الأقسام</option><option value="Baby">بيبي</option><option value="Kids">أطفال</option><option value="Junior">جونيور</option></select></label>
+<label>النوع<select id="dcGen"><option value="">الكل</option><option>بناتي</option><option>ولادي</option><option>مشترك</option></select></label>
+<label class="span2">نسبة الخصم %<input id="dcPct" type="number" min="1" max="90" placeholder="مثال: 20"></label>
+</div>
+<p class="muted" id="dcInfo"></p>
+<button class="primary-btn" id="dcApply" type="button">تطبيق الخصم</button>
+<button class="secondary-btn" id="dcClear" type="button" style="margin-top:15px;margin-right:8px">إلغاء الخصم عن هذه المنتجات</button>`;
+  content.appendChild(sec);
+  const $i=id=>document.getElementById(id);
+  function scope(){return products.filter(p=>(!$i("dcCat").value||p.category===$i("dcCat").value)&&(!$i("dcGen").value||p.gender===$i("dcGen").value))}
+  function info(){$i("dcInfo").textContent="عدد المنتجات المشمولة: "+scope().length}
+  ["dcCat","dcGen"].forEach(id=>$i(id).onchange=info);
+  tb.addEventListener("click",info);
+  const all=["productsTab","ordersTab","settingsTab","shippingTab","discountTab"];
+  document.querySelectorAll(".admin-tabs button[data-tab]").forEach(b=>b.addEventListener("click",()=>{
+    all.forEach(id=>{const e=document.getElementById(id);if(e)e.hidden=id!==b.dataset.tab});
+    document.querySelectorAll(".admin-tabs button[data-tab]").forEach(x=>x.classList.toggle("active",x===b));
+  }));
+  async function run(pct){
+    const list=scope();if(!list.length)return toast("لا توجد منتجات في هذا النطاق");
+    const msg=pct>0?"تطبيق خصم "+pct+"% على "+list.length+" منتج؟":"إلغاء الخصم عن "+list.length+" منتج؟";
+    if(!confirm(msg))return;
+    let ok=0,bad=0;
+    for(const p of list){
+      const r=Number(p.price),w=pct>0?Math.max(1,Math.round(r*(1-pct/100))):r;
+      const u=await sb.from("products").update({wholesale_price:w,updated_at:new Date().toISOString()}).eq("id",p.id).select();
+      if(u.error||!u.data||!u.data.length)bad++;else ok++;
+    }
+    await loadData();renderAdmin();info();
+    toast(bad?("تم "+ok+" وفشل "+bad+" (راجعي الصلاحيات)"):(pct>0?"تم تطبيق الخصم على "+ok+" منتج":"تم إلغاء الخصم عن "+ok+" منتج"));
+  }
+  $i("dcApply").onclick=()=>{const n=Number($i("dcPct").value);if(!(n>=1&&n<=90))return toast("اكتبي نسبة بين 1 و 90");run(n)};
+  $i("dcClear").onclick=()=>run(0);
+})();
