@@ -437,3 +437,90 @@ Promise.all([loadData(),loadSettings()]);
     else if(t.textContent.includes("سعر الجملة"))t.textContent="السعر بعد الخصم – جملة (ج.م)";
   });
 })();
+/* ===== addon4: حذف مضمون + أسعار الشحن + متابعة الطلبات ===== */
+(function(){
+  const ST={new:"جديد",confirmed:"تم تأكيد الطلب",shipped:"الطلب اتشحن",delivered:"الطلب وصل",paid:"تم تحصيل المقابل",cancelled:"ملغي"};
+  const COL={new:"#8a6d1d",confirmed:"#1f5f8b",shipped:"#6b3fa0",delivered:"#2b7a4b",paid:"#0d5c2e",cancelled:"#b3261e"};
+  Object.keys(STATUS_AR).forEach(k=>delete STATUS_AR[k]);Object.assign(STATUS_AR,ST);
+
+  deleteProduct=async function(id){
+    if(!confirm("حذف المنتج نهائياً؟"))return;
+    try{
+      let r=await sb.from("product_sizes").delete().eq("product_id",id).select();if(r.error)throw r.error;
+      r=await sb.from("product_variants").delete().eq("product_id",id).select();if(r.error)throw r.error;
+      r=await sb.from("products").delete().eq("id",id).select();if(r.error)throw r.error;
+      if(!r.data||!r.data.length)throw new Error("الصلاحيات تمنع الحذف (شغّلي ملف SQL)");
+      await loadData();renderAdmin();toast("تم الحذف");
+    }catch(err){toast("تعذر الحذف: "+(err.message||err))}
+  };
+
+  setOrderStatus=async function(id,status){
+    const r=await sb.from("orders").update({status}).eq("id",id).select();
+    if(r.error||!r.data||!r.data.length)return toast("تعذر تحديث الحالة (شغّلي ملف SQL)");
+    const o=adminOrders.find(x=>x.id===id);if(o)o.status=status;
+    toast("تم تحديث الحالة");renderAdmin();
+  };
+
+  let flt="all";
+  const css=document.createElement("style");
+  css.textContent=".ofl{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}.ofl button{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 11px;font-size:12px}.ofl button.on{background:var(--green);color:#fff}.ocard{border:1px solid var(--line);border-radius:10px;padding:11px;margin:9px 0;font-size:12px;line-height:1.8}.ocard .top{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}.ochip{color:#fff;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700}.ocard select{border:1px solid var(--line);border-radius:6px;padding:5px}.ocard details pre{white-space:pre-wrap;font-family:inherit;margin:4px 0;background:#faf8f3;padding:8px;border-radius:6px}.ocard button,.ocard a.b{border:0;background:#eee;padding:5px 10px;border-radius:6px;font-size:12px;color:var(--ink)}.shipgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.shipgrid label{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:12px;border:1px solid var(--line);border-radius:8px;padding:6px 9px}.shipgrid input{width:70px;border:1px solid var(--line);border-radius:6px;padding:4px}";
+  document.head.appendChild(css);
+  function ordersHTML(){
+    const cnt={all:adminOrders.length};Object.keys(ST).forEach(k=>cnt[k]=adminOrders.filter(o=>(o.status||"new")===k).length);
+    const bar='<div class="ofl">'+[["all","الكل"],...Object.entries(ST)].map(([k,l])=>`<button type="button" class="${flt===k?"on":""}" data-f="${k}">${l} (${cnt[k]})</button>`).join("")+"</div>";
+    const list=adminOrders.filter(o=>flt==="all"||(o.status||"new")===flt);
+    const cards=list.map(o=>{
+      const s=o.status||"new",ph=String(o.phone||"").replace(/\D/g,""),wa=ph.startsWith("0")?"2"+ph:ph;
+      return `<div class="ocard"><div class="top"><span><b>${esc(o.order_number)}</b> <span class="ochip" style="background:${COL[s]||"#666"}">${esc(ST[s]||s)}</span></span><span>${new Date(o.created_at).toLocaleString("ar-EG")}</span></div>
+<div>${esc(o.customer_name)} · <a href="tel:${esc(ph)}">${esc(o.phone)}</a> · ${esc(o.governorate)} – ${esc(o.area)}</div>
+<div>${esc(o.address)}</div>
+<div>المنتجات ${money(o.subtotal)} + شحن ${money(o.shipping_cost)} = <b>${money(o.total)}</b></div>
+<details><summary>تفاصيل المنتجات</summary><pre>${esc(o.notes)}</pre></details>
+<div class="top"><select onchange="setOrderStatus('${o.id}',this.value)">${Object.entries(ST).map(([k,l])=>`<option value="${k}" ${s===k?"selected":""}>${l}</option>`).join("")}</select><span><a class="b" href="https://wa.me/${esc(wa)}" target="_blank">واتساب</a> <button type="button" onclick="printOrder('${o.id}')">طباعة</button></span></div></div>`}).join("");
+    return bar+(cards||'<p class="muted">لا توجد طلبات في هذا التصنيف.</p>');
+  }
+  const baseRender=renderAdmin;
+  renderAdmin=function(){
+    baseRender();
+    const box=document.getElementById("adminOrders");
+    if(box){box.innerHTML=ordersHTML();box.querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{flt=b.dataset.f;renderAdmin()})}
+    renderShipGrid();
+  };
+
+  const DEFAULT_SHIP=Object.assign({},SHIPPING);
+  function applyShip(v){
+    if(!v||typeof v!=="object")return;
+    Object.keys(v).forEach(k=>{const n=Number(v[k]);if(n>0&&(k in DEFAULT_SHIP))SHIPPING[k]=n});
+    try{renderGovernorates();updateCheckout()}catch(e){}
+  }
+  async function fetchShip(){
+    if(!sb)return;
+    const {data}=await sb.from("store_settings").select("value").eq("key","shipping").maybeSingle();
+    applyShip(data&&data.value);
+  }
+  const tabs=document.querySelector(".admin-tabs"),content=document.getElementById("adminContent");
+  const logoutBtn=document.getElementById("adminLogout");
+  const tb=document.createElement("button");tb.type="button";tb.dataset.tab="shippingTab";tb.textContent="الشحن";
+  tabs.insertBefore(tb,logoutBtn);
+  const sec=document.createElement("section");sec.id="shippingTab";sec.hidden=true;
+  sec.innerHTML='<h3>أسعار الشحن للمحافظات</h3><p class="muted">عدّلي السعر واضغطي حفظ، والتغيير بيظهر للعملاء فوراً.</p><div id="shipGrid" class="shipgrid"></div><button class="primary-btn" id="saveShip" type="button" style="margin-top:14px">حفظ أسعار الشحن</button>';
+  content.appendChild(sec);
+  function renderShipGrid(){
+    const g=document.getElementById("shipGrid");if(!g||g.dataset.done&&document.activeElement&&g.contains(document.activeElement))return;
+    g.innerHTML=Object.keys(DEFAULT_SHIP).map(k=>`<label>${esc(k)}<input type="number" min="1" data-g="${esc(k)}" value="${SHIPPING[k]}"></label>`).join("");g.dataset.done="1";
+  }
+  const all=["productsTab","ordersTab","settingsTab","shippingTab"];
+  document.querySelectorAll(".admin-tabs button[data-tab]").forEach(b=>b.addEventListener("click",()=>{
+    all.forEach(id=>{const e=document.getElementById(id);if(e)e.hidden=id!==b.dataset.tab});
+    document.querySelectorAll(".admin-tabs button[data-tab]").forEach(x=>x.classList.toggle("active",x===b));
+  }));
+  document.getElementById("saveShip").onclick=async()=>{
+    const v={};let bad=false;
+    document.querySelectorAll("#shipGrid input").forEach(i=>{const n=Number(i.value);if(!(n>0))bad=true;v[i.dataset.g]=n});
+    if(bad)return toast("كل الأسعار لازم تكون أكبر من صفر");
+    const r=await sb.from("store_settings").upsert({key:"shipping",value:v,updated_at:new Date().toISOString()}).select();
+    if(r.error||!r.data||!r.data.length)return toast("تعذر الحفظ (شغّلي ملف SQL)");
+    applyShip(v);toast("تم حفظ أسعار الشحن");
+  };
+  fetchShip();
+})();
